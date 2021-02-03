@@ -81,7 +81,7 @@ class AdversarialSimulator():
         model.summary()
         return model
 
-    def train(self, X_data, epochs, batch_size=128):
+    def train(self, X_data, epochs=100, batch_size=32):
         X_data = self.MinMaxNorm(tf.math.log1p(X_data))
         valid = np.ones((batch_size), 1)
         fake = np.zeros((batch_size), 1)
