@@ -3,6 +3,8 @@ import pandas as pd
 import scanpy as sc
 import anndata as ad
 import seaborn as sns
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 
 class DataPreprocess():
@@ -15,7 +17,7 @@ class DataPreprocess():
         '''
         self.datadir = datadir
         self.celltypes = celltypes
-        self.scdata = load_scdata(self.datadir, self.celltypes)
+        self.scdata = self.load_scdata(self.datadir, self.celltypes)
         self.bkdata = pd.read_csv(bkdata_path, sep='\t')
         # If there is input gene list, filter out genes not in bkdata or scdata
         if gene_list_path is not None:
@@ -32,8 +34,7 @@ class DataPreprocess():
         # sc.pp.regress_out(scdata, ['total_counts'], n_jobs=1)
         # Transpose, filter out genes not in gene list, then sort column (by gene name)
         self.bkdata = self.bkdata.T.loc[:,self.genelist].sort_index(axis=1)
-
-    def load_scdata(data_directories, cell_types):
+    def load_scdata(self, data_directories, cell_types):
         # Read and merge 10X Genomics scRNA-seq data
         scdata = None
         for d, c in zip(tqdm(data_directories), cell_types):
@@ -56,20 +57,20 @@ class DataPreprocess():
         # Calculate QC metrics as per McCarthy et al., 2017 (Scater)
         sc.pp.calculate_qc_metrics(scdata, qc_vars=['mito','ribo', 'mribo'], inplace=True)
         # Plot QC metrics
-        sns.jointplot(x='total_counts', y='n_genes_by_counts', height=8, data=scdata.obs,
-            kind='scatter', hue='celltype')
-        sns.jointplot(x='total_counts', y='pct_counts_mito', height=8, data=scdata.obs,
-            kind='scatter', hue='celltype')
-        sns.jointplot(x='total_counts', y='pct_counts_ribo', height=8, data=scdata.obs,
-            kind='scatter', hue='celltype')
-        sns.jointplot(x='total_counts', y='pct_counts_mribo', height=8, data=scdata.obs,
-            kind='scatter', hue='celltype')
-        plt.show()
+        # sns.jointplot(x='total_counts', y='n_genes_by_counts', height=8, data=scdata.obs,
+        #     kind='scatter', hue='celltype')
+        # sns.jointplot(x='total_counts', y='pct_counts_mito', height=8, data=scdata.obs,
+        #     kind='scatter', hue='celltype')
+        # sns.jointplot(x='total_counts', y='pct_counts_ribo', height=8, data=scdata.obs,
+        #     kind='scatter', hue='celltype')
+        # sns.jointplot(x='total_counts', y='pct_counts_mribo', height=8, data=scdata.obs,
+        #     kind='scatter', hue='celltype')
+        # plt.show()
         # Filter out cells with >5% of counts from mitochondria and mitoribosome
+        # scdata = scdata[scdata.obs.pct_counts_ribo > 30, :]
         scdata = scdata[scdata.obs.pct_counts_mito < 5, :]
         scdata = scdata[scdata.obs.pct_counts_mribo < 1, :]
         return scdata
-
     def __call__(self, whichdata):
         if whichdata == 'scdata':
             out = []
