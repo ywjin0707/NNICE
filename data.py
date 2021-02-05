@@ -1,3 +1,4 @@
+import tensorflow as tf
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -34,6 +35,7 @@ class DataPreprocess():
         # sc.pp.regress_out(scdata, ['total_counts'], n_jobs=1)
         # Transpose, filter out genes not in gene list, then sort column (by gene name)
         self.bkdata = self.bkdata.T.loc[:,self.genelist].sort_index(axis=1)
+        self.bkdata = self.bkdata.values.astype(float)
     def load_scdata(self, data_directories, cell_types):
         # Read and merge 10X Genomics scRNA-seq data
         scdata = None
@@ -71,11 +73,16 @@ class DataPreprocess():
         scdata = scdata[scdata.obs.pct_counts_mito < 5, :]
         scdata = scdata[scdata.obs.pct_counts_mribo < 1, :]
         return scdata
-    def __call__(self, whichdata):
+    def __call__(self, whichdata, batch_size=32):
         if whichdata == 'scdata':
             out = []
             for c in tqdm(self.celltypes):
-                out.append(self.scdata[self.scdata.obs.celltype==c].to_df().sort_index(axis=1))
+                scdata_ = self.scdata[self.scdata.obs.celltype==c].to_df().sort_index(axis=1)
+                # Add to row index 0 a cell with no gene expression (all zeros)
+                zeros = pd.DataFrame(np.zeros((1,scdata_.shape[1])), columns=scdata_.columns.values)
+                # Expand into batch dimension and repeat 2-D tensor by # of samples per mini batch
+                scdata__ = tf.tile(tf.expand_dims(pd.concat([zeros,scdata_]), axis=0), [batch_size,1,1])
+                out.append(scdata__)
         elif whichdata == 'bkdata':
             out = self.bkdata
         elif whichdata == 'genelist':
