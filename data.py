@@ -8,8 +8,20 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 
+def FeatureList(paths: list) -> list:
+    features = None
+    for path in paths:
+        mydata = pd.read_csv(path, index_col = 0)
+        if features == None:
+            features = set(mydata.index.values.tolist())
+        else:
+            features = features.intersection(set(mydata.index.values.tolist()))
+    features = list(features)
+    features.sort()
+    return features
+
 class DataPreprocess():
-    def __init__(self, datadir, celltypes, bkdata_path, gene_list_path):
+    def __init__(self, datadir, celltypes, bkdata_path, features):
         '''
         Creates preprocessed instance of input data
         scdata should be in matrix.mtx within specified folders along with barcodes.tsv and genes.tsv
@@ -19,26 +31,24 @@ class DataPreprocess():
         self.datadir = datadir
         self.celltypes = celltypes
         self.scdata = self.load_scdata(self.datadir, self.celltypes)
-        self.bkdata = pd.read_csv(bkdata_path, sep='\t')
+        self.bkdata = pd.read_csv(bkdata_path)
         # If there is input gene list, filter out genes not in bkdata or scdata
-        if gene_list_path is not None:
-            self.genelist = pd.read_csv(gene_list_path, squeeze=True, names=['name'])
-            self.genelist = self.genelist.drop_duplicates()
-            self.genelist = self.genelist[self.genelist.isin(self.bkdata.index.drop_duplicates())]
+        if features is None:
+            self.features = self.bkdata.index.drop_duplicates()
         else:
-            self.genelist = self.bkdata.index.drop_duplicates()
-        self.genelist = self.genelist[self.genelist.isin(self.scdata.var.index)]
-        self.genelist = self.genelist.sort_values()
+            self.features = features
         # Filter out genes not in gene list
-        self.scdata = self.scdata[:,self.scdata.var.index.isin(self.genelist)]
+        self.scdata = self.scdata[:,self.scdata.var_names.isin(self.features)]
         sc.pp.normalize_total(self.scdata, target_sum=1e6) # normalize to sum to 1,000,000
         # sc.pp.regress_out(scdata, ['total_counts'], n_jobs=1)
         # Transpose, filter out genes not in gene list, then sort column (by gene name)
-        self.bkdata = self.bkdata.T.loc[:,self.genelist].sort_index(axis=1)
+        self.bkdata = self.bkdata.T
+        self.bkdata = self.bkdata.loc[:,self.bkdata.columns.isin(self.features)].sort_index(axis=1)
         self.bkdata = self.bkdata.values.astype(float)
     def load_scdata(self, data_directories, cell_types):
         # Read and merge 10X Genomics scRNA-seq data
         scdata = None
+        print('Loading single cell dataset')
         for d, c in zip(tqdm(data_directories), cell_types):
             x = sc.read_10x_mtx(d)
             x.obs['celltype'] = [c]*len(x.obs.index)
@@ -73,20 +83,21 @@ class DataPreprocess():
         scdata = scdata[scdata.obs.pct_counts_mito < 5, :]
         scdata = scdata[scdata.obs.pct_counts_mribo < 1, :]
         return scdata
-    def __call__(self, whichdata, batch_size=32):
+    def __call__(self, whichdata, batch_size=1):
         if whichdata == 'scdata':
             out = []
+            print('Dividing single cell dataset into cell types')
             for c in tqdm(self.celltypes):
                 scdata_ = self.scdata[self.scdata.obs.celltype==c].to_df().sort_index(axis=1)
                 # Add to row index 0 a cell with no gene expression (all zeros)
-                zeros = pd.DataFrame(np.zeros((1,scdata_.shape[1])), columns=scdata_.columns.values)
+                # zeros = pd.DataFrame(np.zeros((1,scdata_.shape[1])), columns=scdata_.columns.values)
                 # Expand into batch dimension and repeat 2-D tensor by # of samples per mini batch
-                scdata__ = tf.tile(tf.expand_dims(pd.concat([zeros,scdata_]), axis=0), [batch_size,1,1])
-                out.append(scdata__)
+                # scdata_ = tf.tile(tf.expand_dims(pd.concat([zeros,scdata_]), axis=0), [batch_size,1,1])
+                out.append(scdata_)
         elif whichdata == 'bkdata':
             out = self.bkdata
         elif whichdata == 'genelist':
-            out = self.genelist
+            out = self.features
         else:
             raise ValueError('Choose only one of the following: "scdata", "bkdata", or "genelist"')
         return out
