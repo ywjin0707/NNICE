@@ -58,7 +58,7 @@ gtf = pd.read_table(gtfpath, header=None, comment='#', dtype=object)
 col8 = gtf[8].str.split(r'\s')
 #%%
 
-def load_extract_gtf(path):
+def load_gtf(path):
     dtypes = {
         "Chromosome": "category",
         "Feature": "category",
@@ -67,22 +67,24 @@ def load_extract_gtf(path):
     
     names = "Chromosome Source Feature Start End Score Strand Frame Attribute".split()
     
-    df_iter = pd.read_csv(
-        gtfpath,
+    gtf = pd.read_csv(
+        path,
         sep='\t',
         header=None,
         comment='#',
         names=names,
         dtype=dtypes)
+    return gtf
+    
+def process_gtf(gtf):
+    # gtf = gtf.loc[gtf['Chromosome'].isin([str(i) for i in range(1,23)] + ['X','Y','MT'])]
 
-    dfs = []
-    for df in gtf:
-        rowdicts = []
-        for l in df.Attribute:
-            rowdict = {}
-            # l[:-1] removes final ";" cheaply
-            for k, v in (kv.replace('"', '').split(None, 1) for kv in l[:-1].split("; ")):
-
+    rowdicts = []
+    for l in gtf.Attribute:
+        rowdict = {}
+        # l[:-1] removes final ";" cheaply
+        for k, v in (kv.replace('"', '').split(None, 1) for kv in l[:-1].split("; ")):
+            if k in ['gene_id', 'gene_name']:
                 if k not in rowdict:
                     rowdict[k] = v
                 elif k in rowdict and isinstance(rowdict[k], list):
@@ -90,20 +92,16 @@ def load_extract_gtf(path):
                 else:
                     rowdict[k] = [rowdict[k], v]
 
-            rowdicts.append({
-                k: ','.join(v) if isinstance(v, list) else v
-                for k, v in rowdict.items()
-            })
-        extra = pd.DataFrame.from_dict(rowdicts).set_index(df.index)
-        df = df.drop("Attribute", axis=1)
-        ndf = pd.concat([df, extra], axis=1, sort=False)
-        dfs.append(ndf)
-
-    df = pd.concat(dfs, sort=False)
+        rowdicts.append({
+            k: ','.join(v) if isinstance(v, list) else v
+            for k, v in rowdict.items()
+        })
+    extra = pd.DataFrame.from_dict(rowdicts).set_index(gtf.index)
+    gtf = gtf.drop(["Attribute"], axis=1)
+    df = pd.concat([gtf, extra], axis=1, sort=False)
     # df.loc[:, "Start"] = df.Start - 1
     return df
 
-    
         
 def load_data(path, sampleID=None, celltype=None):
     """
