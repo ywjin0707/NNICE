@@ -55,8 +55,32 @@ col8 = gtf[8].str.split(r'\s')
 #%%
 
 def load_extract_gtf(path):
-    gtf = pr.read_gtf(gtfpath) ## takes long time
+    dtypes = {
+        "Chromosome": "category",
+        "Feature": "category",
+        "Strand": "category"
+    }
+    
+    names = "Chromosome Source Feature Start End Score Strand Frame Attribute".split()
+    
+    gtf2 = pd.read_table(
+        path,
+        sep='\t',
+        header=None,
+        comment='#',
+        names=names,
+        dtype=dtypes)
+    
+    
+    gtf = pr.read_gtf(gtfpath, as_df=True) ## takes long time
     gtf = pd.read_table(path, header=None, comment='#', dtype=object)
+    
+    tmp = gtf2.Attribute.str.rstrip(';').str.replace('"','').str.extractall(r'(?P<name>\w+\s)(?P<value>\w+;\s)')
+    tmp.value = tmp.value.str.replace(';','')
+    tmp = tmp.reset_index(level=0).pivot(index='level_0',columns='name',values='value')
+    gtf2.drop('Attribute', axis=1).join(tmp)
+    
+    
     col8 = gtf[8].str.split(r'\s"', expand=True)
     
         
