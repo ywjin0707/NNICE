@@ -21,9 +21,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 #%%
-gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
-directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
-filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
+# gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
+gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
+# directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
+directory = 'C:/Users/yw_ji/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
+# filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
+filepath = 'C:/Users/yw_ji/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
+
 
 bkdata = load_data(filepath)
 bkdata = bkdata.T ### Need to fix in load_data
@@ -63,25 +67,42 @@ def load_extract_gtf(path):
     
     names = "Chromosome Source Feature Start End Score Strand Frame Attribute".split()
     
-    gtf2 = pd.read_table(
-        path,
+    df_iter = pd.read_csv(
+        gtfpath,
         sep='\t',
         header=None,
         comment='#',
         names=names,
         dtype=dtypes)
-    
-    
-    gtf = pr.read_gtf(gtfpath, as_df=True) ## takes long time
-    gtf = pd.read_table(path, header=None, comment='#', dtype=object)
-    
-    tmp = gtf2.Attribute.str.rstrip(';').str.replace('"','').str.extractall(r'(?P<name>\w+\s)(?P<value>\w+;\s)')
-    tmp.value = tmp.value.str.replace(';','')
-    tmp = tmp.reset_index(level=0).pivot(index='level_0',columns='name',values='value')
-    gtf2.drop('Attribute', axis=1).join(tmp)
-    
-    
-    col8 = gtf[8].str.split(r'\s"', expand=True)
+
+    dfs = []
+    for df in gtf:
+        rowdicts = []
+        for l in df.Attribute:
+            rowdict = {}
+            # l[:-1] removes final ";" cheaply
+            for k, v in (kv.replace('"', '').split(None, 1) for kv in l[:-1].split("; ")):
+
+                if k not in rowdict:
+                    rowdict[k] = v
+                elif k in rowdict and isinstance(rowdict[k], list):
+                    rowdict[k].append(v)
+                else:
+                    rowdict[k] = [rowdict[k], v]
+
+            rowdicts.append({
+                k: ','.join(v) if isinstance(v, list) else v
+                for k, v in rowdict.items()
+            })
+        extra = pd.DataFrame.from_dict(rowdicts).set_index(df.index)
+        df = df.drop("Attribute", axis=1)
+        ndf = pd.concat([df, extra], axis=1, sort=False)
+        dfs.append(ndf)
+
+    df = pd.concat(dfs, sort=False)
+    # df.loc[:, "Start"] = df.Start - 1
+    return df
+
     
         
 def load_data(path, sampleID=None, celltype=None):
