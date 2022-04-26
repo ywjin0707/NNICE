@@ -1,4 +1,5 @@
-"""
+""".
+
 Created on Thu Apr 21 14:38:31 2022
 
 @author: ywjin0707
@@ -12,21 +13,19 @@ filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.tx
 """
 
 import os
-import numpy as np
+import warnings
 import pandas as pd
 import scanpy as sc
 import anndata as ad
-import pyranges as pr
-import matplotlib.pyplot as plt
 import seaborn as sns
 
 #%%
 # gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
 gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
 # directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
-directory = 'C:/Users/yw_ji/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
+directory = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
 # filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
-filepath = 'C:/Users/yw_ji/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
+filepath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
 
 
 bkdata = load_data(filepath)
@@ -59,6 +58,22 @@ col8 = gtf[8].str.split(r'\s')
 #%%
 
 def load_gtf(path):
+    """Read in .gtf file as pd.DataFrame.
+    
+    Load and read .gtf file as pd.DataFrame. On-the-fly decompression is also possible. 
+    Depending on the size of the file, may take minutes to run and require extra memory overhead.
+
+    Parameters
+    ----------
+    path : str
+        Path to .gtf file as string.
+
+    Returns
+    -------
+    gtf : pd.DataFrame
+        Data frame of .gtf file.
+
+    """
     dtypes = {
         "Chromosome": "category",
         "Feature": "category",
@@ -77,34 +92,45 @@ def load_gtf(path):
     return gtf
     
 def process_gtf(gtf):
+    """Extract Gene ID and Gene Name from .gtf file.
+    
+    Parses the last (Attribute) column of the .gtf file loaded as pandas data frame, 
+    and extracts 'gene_id' and 'gene_name' as a dictionary object. 
+    Code referenced from Pyranges (https://github.com/biocore-ntnu/pyranges/blob/master/pyranges/readers.py)
+
+    Parameters
+    ----------
+    gtf : pd.DataFrame
+        Data frame of .gtf file.
+
+    Returns
+    -------
+    rowdict : dict
+        Dictionary of extracted 'gene_id' (keys) and 'gene_name' (values).
+
+    """
     # gtf = gtf.loc[gtf['Chromosome'].isin([str(i) for i in range(1,23)] + ['X','Y','MT'])]
-
-    rowdicts = []
+    rowdict = {}
     for l in gtf.Attribute:
-        rowdict = {}
         # l[:-1] removes final ";" cheaply
+        key = ''
+        val = ''
         for k, v in (kv.replace('"', '').split(None, 1) for kv in l[:-1].split("; ")):
-            if k in ['gene_id', 'gene_name']:
-                if k not in rowdict:
-                    rowdict[k] = v
-                elif k in rowdict and isinstance(rowdict[k], list):
-                    rowdict[k].append(v)
+            if k == 'gene_id':
+                if v not in rowdict.keys():
+                    key = v
                 else:
-                    rowdict[k] = [rowdict[k], v]
-
-        rowdicts.append({
-            k: ','.join(v) if isinstance(v, list) else v
-            for k, v in rowdict.items()
-        })
-    extra = pd.DataFrame.from_dict(rowdicts).set_index(gtf.index)
-    gtf = gtf.drop(["Attribute"], axis=1)
-    df = pd.concat([gtf, extra], axis=1, sort=False)
-    # df.loc[:, "Start"] = df.Start - 1
-    return df
+                    continue
+            elif k == 'gene_name':
+                val = v
+                break
+        rowdict[key] = val
+    return rowdict
 
         
-def load_data(path, sampleID=None, celltype=None):
-    """
+def load_data(path, sampleID=None, celltype=None, ids=None):
+    """Load read count matrix data.
+    
     Loads data types including:
         - 10x Genomics scRNA-seq data from directory. 
         - .csv file format
@@ -119,7 +145,9 @@ def load_data(path, sampleID=None, celltype=None):
         Sample identification, if known. Default is None. 
     celltype : str, optional
         Cell type identity, if known. Default is None. 
-
+    ids : dict, optional
+        Dictionary of gene IDs (ex. Ensembl and HGNC)
+        
     Returns
     -------
     mydata : AnnData class object
@@ -127,13 +155,31 @@ def load_data(path, sampleID=None, celltype=None):
 
     """
     if os.path.isdir(path):
+        print(f'Loading single cell data from {path}...')
         mydata = sc.read_10x_mtx(path)
     else:
+        print(f'Loading bulk data from {path}...')
         try:
             mydata = ad.read_csv(path)
         except ValueError:
             mydata = ad.read_text(path)
     mydata.uns['filepath'] = path
+    if ids:
+        ids = {v: k for k, v in ids.items()}
+        print('Dictionary of Ensembl and HGNC Gene IDs were provided.\nChecking row/column indices...')
+        if (any([i in ids.keys() for i in mydata.obs.index[0:50]])):
+            print('Loaded data will be transposed...')
+            mydata = mydata.T
+            mydata.var['gene_id'] = list(map(ids.get, mydata.var.index))
+            
+        elif (any([i in ids.values() for i in mydata.obs.index[0:50]])):
+            print('Loaded data will be transposed and index changed to Ensembl ID...')
+            mydata = mydata.T
+        elif (any([i in ids.keys() for i in mydata.var.index[0:50]])) or (any([i in ids.values() for i in mydata.var.index[0:50]])):
+            print('Row indices are feature IDs.')
+        else:
+            warnings.warn(f'Found no match between provided Gene ID dictionary and row/column indices.\nCheck Gene ID dictionary {list(ids.items())[0]}, row indices {mydata.var.index[0]}, and column indices {mydata.obs.index[0]}. ')
+            
     if sampleID:
         mydata.obs['sampleID'] = str(sampleID)
     if celltype:
@@ -145,7 +191,8 @@ def load_data(path, sampleID=None, celltype=None):
 
 
 def generate_QC_plots(mydata, filtered=False):
-    """
+    """Save plots for quality control metrics.
+    
     Make 3 joint grid plots showing quality control metrics for cells/samples:
         - Total counts X Number of features
         - Total counts X Percent mitochondrial genes
@@ -161,7 +208,7 @@ def generate_QC_plots(mydata, filtered=False):
     Returns
     -------
     None.
-
+    
     """
     filepath = mydata.uns['filepath']
     if filtered:
@@ -179,7 +226,8 @@ def generate_QC_plots(mydata, filtered=False):
 
 
 def generate_QC_metrics(mydata, plot=True):
-    """
+    """Calculate quality control metrics for read count data.
+    
     Annotate mitochondrial (mito), ribosomal (ribo), and mitochondrial-ribosomal (mribo) genes.
     Calculate QC metrics - refer to scanpy docs for more details (https://scanpy.readthedocs.io/en/latest/generated/scanpy.pp.calculate_qc_metrics.html#scanpy.pp.calculate_qc_metrics). 
     Then plots QC metrics (optional). 
@@ -207,7 +255,8 @@ def generate_QC_metrics(mydata, plot=True):
 
 
 def filter_by_QC_metrics(mydata,  stds = 2, th_mito = 5, th_mribo = None, plot=True):
-    """
+    """Filter read count data by quality control metrics.
+    
     Filters cells by 4 metrics: 
         - total read counts for each cell/sample within 2 (default) standard deviations from the mean across all cells/samples;
         - total number of non-zero features for each cell/sample within 2 (default) standard deviations from the mean across all cells/samples;
@@ -247,25 +296,8 @@ def filter_by_QC_metrics(mydata,  stds = 2, th_mito = 5, th_mribo = None, plot=T
     return mydata
     
 
-def concat(*args):
-    """
-    
-
-    Parameters
-    ----------
-    x : TYPE
-        DESCRIPTION.
-    y : TYPE
-        DESCRIPTION.
-    z : TYPE
-        DESCRIPTION.
-
-    Returns
-    -------
-    res : TYPE
-        DESCRIPTION.
-
-    """
-    res = ad.concat([mydata for mydata in args])
+def filter_genes(dfs: list, ids: dict, features: list = None):
+    for df in dfs:
+        df.var.index 
     return res
 
