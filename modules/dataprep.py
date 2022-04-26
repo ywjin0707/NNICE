@@ -21,7 +21,8 @@ import seaborn as sns
 
 #%%
 # gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
-gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
+# gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
+gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh38.106.gtf.gz'
 # directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
 directory = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
 # filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
