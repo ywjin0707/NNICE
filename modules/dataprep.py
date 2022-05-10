@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """.
 
 Created on Thu Apr 21 14:38:31 2022
@@ -7,6 +8,7 @@ Created on Thu Apr 21 14:38:31 2022
 scRNA-seq datasets
 sample bulk dataset (TCGA) 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
 GRCh37.87 download link: http://ftp.ensembl.org/pub/grch37/release-100/gtf/homo_sapiens/
+GRCh38.106 download link: http://ftp.ensembl.org/pub/current_gtf/homo_sapiens/
 gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
 directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
 filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
@@ -21,16 +23,18 @@ import seaborn as sns
 
 #%%
 # gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
+gtfpath = 'D:/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh38.106.gtf.gz'
 # gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh37.87.gtf'
-gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh38.106.gtf.gz'
-# directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
-directory = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
-# filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
-filepath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
+# gtfpath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/Gene Lists/Homo_sapiens.GRCh38.106.gtf.gz'
+directory = 'D:/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
+# directory = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/b_cells_filtered_gene_bc_matrices/filtered_matrices_mex/hg19/'
+filepath = 'D:/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
+# filepath = 'C:/Users/yw_ji/OneDrive/210831_Bioinformatics/DATA/TCGA/TCGA_GDC_HTSeq_Counts.txt'
 
-
-bkdata = load_data(filepath)
-bkdata = bkdata.T ### Need to fix in load_data
+gtf = load_gtf(gtfpath)
+gene_dict = process_gtf(gtf)
+bkdata = load_data(filepath, ids=gene_dict)
+# bkdata = bkdata.T ### Need to fix in load_data
 bkdata = generate_QC_metrics(bkdata, plot=False)
 sns.jointplot(x='total_counts', y='n_genes_by_counts', height=8, data=bkdata.obs, kind='scatter')
 sns.jointplot(x='total_counts', y='pct_counts_mito', height=8, data=bkdata.obs, kind='scatter')
@@ -57,6 +61,7 @@ sns.jointplot(x='total_counts', y='pct_counts_mribo', height=8, data=scdata.obs,
 gtf = pd.read_table(gtfpath, header=None, comment='#', dtype=object)
 col8 = gtf[8].str.split(r'\s')
 #%%
+    
 
 def load_gtf(path):
     """Read in .gtf file as pd.DataFrame.
@@ -166,21 +171,29 @@ def load_data(path, sampleID=None, celltype=None, ids=None):
             mydata = ad.read_text(path)
     mydata.uns['filepath'] = path
     if ids:
-        ids = {v: k for k, v in ids.items()}
+        # ids = {v: k for k, v in ids.items()}
         print('Dictionary of Ensembl and HGNC Gene IDs were provided.\nChecking row/column indices...')
         if (any([i in ids.keys() for i in mydata.obs.index[0:50]])):
-            print('Loaded data will be transposed...')
+            print('Loaded data will be transposed and index changed to gene_name...')
             mydata = mydata.T
-            mydata.var['gene_id'] = list(map(ids.get, mydata.var.index))
-            
+            mydata.var['gene_name'] = list(map(ids.get, mydata.var.index))
+            mydata.var = mydata.var.reset_index().set_index('gene_name')
         elif (any([i in ids.values() for i in mydata.obs.index[0:50]])):
-            print('Loaded data will be transposed and index changed to Ensembl ID...')
+            print('Loaded data will be transposed and gene_id added to .var...')
             mydata = mydata.T
-        elif (any([i in ids.keys() for i in mydata.var.index[0:50]])) or (any([i in ids.values() for i in mydata.var.index[0:50]])):
-            print('Row indices are feature IDs.')
+            ids = {v: k for k, v in ids.items()}
+            mydata.var['gene_id'] = list(map(ids.get, mydata.var.index))
+        elif (any([i in ids.keys() for i in mydata.var.index[0:50]])):
+            print('Row indices are gene_id. Changing index to gene_name')
+            mydata.var['gene_name'] = list(map(ids.get, mydata.var.index))
+            mydata.var = mydata.var.reset_index().set_index('gene_name')
+        elif (any([i in ids.values() for i in mydata.var.index[0:50]])):
+            print('Row indices are gene_names. Changing index to Ensembl ID...')
+            ids = {v: k for k, v in ids.items()}
+            mydata.var['gene_id'] = list(map(ids.get, mydata.var.index))
         else:
             warnings.warn(f'Found no match between provided Gene ID dictionary and row/column indices.\nCheck Gene ID dictionary {list(ids.items())[0]}, row indices {mydata.var.index[0]}, and column indices {mydata.obs.index[0]}. ')
-            
+    mydata.obs = mydata.obs.reset_index()        
     if sampleID:
         mydata.obs['sampleID'] = str(sampleID)
     if celltype:
@@ -297,8 +310,26 @@ def filter_by_QC_metrics(mydata,  stds = 2, th_mito = 5, th_mribo = None, plot=T
     return mydata
     
 
-def filter_genes(dfs: list, ids: dict, features: list = None):
-    for df in dfs:
-        df.var.index 
-    return res
+def filter_genes(dfs: list, genes: list):
+    """Filters genes, keeping overlapping features between datasets and provided features set
+    Given a list of AnnData objects with gene_names as the .var.index, and a set of genes/features 
+
+    Parameters
+    ----------
+    dfs : list
+        List of read count matrices as AnnData objects with gene_names as .var.index.
+    genes : list
+        List of gene_names to retain.
+
+    Returns
+    -------
+    dfs : list
+        List of read count matrices as AnnData objects with filtered genes.
+
+    """
+    keep = set(genes)
+    dfvars = [set(df.var.index) for df in dfs]
+    keep = keep.intersection(*dfvars)
+    dfs = [df[:,df.var_names.isin(keep)] for df in dfs]
+    return dfs
 
